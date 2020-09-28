@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!-- Button trigger modal -->
+<div class="container">
+    <div class="btn-group" role="group" aria-label="Basic example">
+        <button class="btn btn-info" @click="showSidebar = !showSidebar">[[ showSidebar ? 'Cacher la sidebar' : 'Afficher la sidebar' ]]</button>
+        <button class="btn btn-secondary dark d-flex align-items-center" data-toggle="modal" data-target="#exampleModal">
+            <img src="{{ url_for('static', filename='images/lock-dark.png') }}" alt="" width="24" height="24">
+            <span class="ml-2">Manage password</span>
+        </button>        
+    </div>
+    
+    <!-- Modal -->
+    <div class="modal fade" id="exampleModal" tabindex="-1" role="dialog" aria-labelledby="exampleModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+            <h5 class="modal-title" id="exampleModalLabel">Password manager</h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            </div>
+            <div class="modal-body">        
+
+                <div class="container" id="app">                    
+                    <div class="form-group">
+                        <input class="form-control" type="text" placeholder="*Service" v-model="form.service" required>
+                    </div>
+                    <div class="form-group">
+                        <input class="form-control" type="text" placeholder="URL du site WEB" v-model="form.url">
+                    </div>
+                    <div class="form-group">
+                        <div class="row">
+                            <div class="col-6">
+                                <input class="form-control" type="text" placeholder="*Username" v-model="form.username" required>
+                            </div>
+                            <div class="col-6">
+                                <input class="form-control" type="password" placeholder="*Password" v-model="form.pwd" required>
+                            </div>
+                        </div>        
+                    </div>
+                    <button class="btn btn-primary" @click="apiStorePwd">
+                        
+                        Store password
+                    </button>
+                    <div 
+                        :class="['alert mt-3', 'alert-' + notif.status]" 
+                        role="alert" 
+                        v-if="notif.status !== null"
+                    >
+                        [[ notif.msg ]]
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>            
+            </div>
+            </div>
+        </div>
+    </div>    
+</div>
+
+<div class="sidebar" v-if="showSidebar">
+    <div class="form-group row">
+        <div class="col-9">
+            <input class="form-control" type="text" v-model="pattern" placeholder="Tapez entrée pour rechercher un service" @keyDown.enter="apiListPwd()">
+        </div>
+        <div class="col-3">
+            <button class="btn btn-sm" @click="apiListPwd">
+                <img src="{{ url_for('static', filename='images/refresh.png') }}" alt="" width="24" height="24">
+            </button>
+        </div>
+    </div>
+    <div class="card" style="width: 18rem;" v-for="(pwd,index) in pwds" :key="index">
+        <div class="card-body">
+          <h5 class="card-title">[[ pwd.service ]]</h5>
+          <h6 class="card-subtitle">[[ pwd.created_at.substr(0, 10) ]]</h6>
+          <p class="card-text">
+              <ul class="list-group-flush">
+                    <li class="list-group-item">[[ pwd.url ]]</li>
+                    <li class="list-group-item">[[ pwd.username ]]</li>
+                    <li class="list-group-item">
+                        <input class="form-control" :type="pwd.isSecret ? 'password' : 'text'" :value="pwd.pwd" readonly />
+                        <button class="btn btn-sm" @click="pwd.isSecret = !pwd.isSecret">[[ pwd.isSecret ? 'Show' : 'Hide' ]]</button>
+                    </li>
+              </ul>
+          </p>
+          <a :href="pwd.url" class="btn btn-secondary" target="_blank">Visit</a>
+        </div>
+      </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+<script>
+    function copy(sel) {
+        /* Get the text field */
+        var copyText = document.querySelector(sel);
+
+        /* Select the text field */
+        copyText.select();
+        copyText.setSelectionRange(0, 99999); /*For mobile devices*/
+
+        /* Copy the text inside the text field */
+        document.execCommand("copy");
+
+        /* Return the copied text */
+        console.log("Copied the text: " + copyText.value);
+        return copyText.value;
+    }
+    const vm = new Vue({
+        delimiters: ['[[', ']]'],
+        el: '#app',        
+        data() {
+            return {
+                pwds: [],
+                pattern: '',
+                showSidebar: true,
+                form: {
+                    service: null,
+                    username: null,
+                    pwd: null,
+                    url: null,   
+                },
+                notif: {
+                    status: null,
+                    msg: ''
+                }
+            }
+        },
+        created() {
+            this.apiListPwd();
+        },
+        methods: {
+            apiListPwd() {
+                this.pwds = [];
+                // Send a POST request
+                if (this.pattern) {
+                    var url = 'http://127.0.0.1:5000/pwd/list?service=' + this.pattern;
+                } else {
+                    var url = 'http://127.0.0.1:5000/pwd/list';
+                }                
+                console.log('Call to this API endpoint: ', url);
+                axios.get(url)
+                .then((response) => {                    
+                    this.pwds = response.data.passwords.map(obj => (
+                            {...obj, isSecret: true}
+                        )
+                    );
+                    console.log(this.pwds);
+                })
+                .catch((error) => {
+                    console.log(error);
+                });
+            },
+            apiStorePwd() {
+                // Send a POST request                
+                const url = 'http://127.0.0.1:5000/pwd/store';                
+                if (this.form.service == null || this.form.username == null || this.form.pwd == null) {
+                    this.hideNotif('danger',
+                        msg="Les champs précédés d'un asterisque sont obligatoires",
+                        after = 3000
+                    );
+                    return
+                }
+                console.log('Call to this API endpoint: ', url);
+                axios.post(url, {
+                    service: this.form.service,
+                    username: this.form.username,
+                    pwd: this.form.pwd,
+                    url: this.form.url
+                })
+                .then((response) => {
+                    console.log(response.data);                                        
+                    this.hideNotif('success',
+                        msg='Password has been successfully stored',
+                        after = 1500
+                    );
+                    this.resetForm();
+                })
+                .catch((error) => {
+                    console.log(error);
+                });
+            },
+            resetForm() {
+                this.form.service = null;        
+                this.form.username = null;
+                this.form.pwd = null;
+                this.form.url = null;                
+            },
+            hideNotif(status, msg='', after=1500) {
+                this.notif.status = status;
+                this.notif.msg = msg;
+                setTimeout(() => {
+                    this.notif.status = null;
+                }, after);
+            },            
+        },        
+    })
+</script>
+{% endblock javascript %}
